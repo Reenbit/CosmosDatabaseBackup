@@ -1,0 +1,381 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    /* General */
+    "project": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev"
+    },
+    "isDevelopment": {
+      "type": "bool",
+      "defaultValue": true
+    },
+
+    /* CosmosDB */
+    "cosmosDbAccountName": {
+      "type": "string",
+      "defaultValue": "datastorage"
+    },
+
+    "cosmosDbName": {
+      "type": "string"
+    },
+
+    /* storage backup*/
+    "backupStorageName": {
+      "type": "string",
+      "defaultValue": "backup"
+    },
+
+    "backupStorageKind": {
+      "type": "string",
+      "defaultValue": "Storage"
+    },
+
+    /* Key Vault */
+    "keyVaultName": {
+      "type": "string",
+      "defaultValue": "vault"
+    },
+
+    /* API App Service Plan */
+    "appServicePlanName": {
+      "type": "string",
+      "defaultValue": "appsvcplan"
+    },
+    "appServicePlanSKUTier": {
+      "type": "string",
+      "defaultValue": "Standard"
+    },
+    "appServicePlanSKUName": {
+      "type": "string",
+      "defaultValue": "S1"
+    },
+
+    /* API App Service */
+    "apiAppServiceName": {
+      "type": "string",
+      "defaultValue": "api"
+    },
+
+    /* App Insights */
+    "appInsightsSuffix": {
+      "type": "string",
+      "defaultValue": "-insights"
+    },
+    "appInsightsLocation": {
+      "type": "string",
+      "defaultValue": "eastus"
+    },
+
+    /* Artifacts parameters */
+    "_artifactsLocation": {
+      "type": "string"
+    },
+    "_artifactsLocationSasToken": {
+      "type": "securestring"
+    },
+    "_templateFolder": {
+      "type": "string",
+      "defaultValue": "Templates"
+    },
+    "_scriptsFolder": {
+      "type": "string",
+      "defaultValue": "Scripts"
+    }
+  },
+  "variables": {
+    /* General */
+    "_tenantId": "[subscription().tenantId]",
+
+    /* Cosmos DB */
+    "cosmosDbAccountName": "[concat(parameters('project'), parameters('cosmosDbAccountName'), parameters('environment'))]",
+    "cosmosDbTemplateName": "cosmosdb-documentdb.json",
+
+    /* Storage Backup*/
+    "backupStorageName": "[concat(parameters('project'), parameters('backupStorageName'), parameters('environment'))]",
+    "storageTemplateName": "storage.json",
+
+    /* Key Vault */
+    "keyVaultName": "[concat(parameters('project'), parameters('keyVaultName'), parameters('environment'))]",
+    "keyVaultTemplateName": "key-vault.json",
+
+    /* Key Vault secrets names*/
+    "cosmosDbAccountKeySecretName": "cosmos-db-account-key",
+    "cosmosDbConnectionStringSecretName": "cosmos-db-connection-string",
+    "blobForBackupConnectionStringSecretName": "Storage-ReadWrite",
+    "sourceCosmosDbToBeBackupedConnectionStringSecretName": "CosmosDbBackup-Read",
+    "cosmosDbRestoreConnectionStringSecretName": "CosmosDbBackup-Write",
+
+    /* App Service Plan */
+    "appServicePlanName": "[concat(parameters('project'), parameters('appServicePlanName'), parameters('environment'))]",
+    "appServicePlanTemplateName": "app-service-plan.json",
+
+    /* App Service Plan Auto Scaling*/
+    "appServicePlanAutoscaleSettingsTemplateName": "app-service-plan-autoscale.json",
+
+    /* App Service */
+    "apiAppServiceName": "[concat(parameters('project'), parameters('apiAppServiceName'), parameters('environment'))]",
+    "appServiceTemplateName": "web-app.json",
+
+    /* App Insights*/
+    "appInsightsName": "[concat(parameters('project'), parameters('apiAppServiceName'), parameters('appInsightsSuffix'), parameters('environment'))]",
+    "appInsightsTemplateName": "app-insights.json"
+  },
+  "resources": [
+    /* CosmosDB */
+    {
+      "name": "cosmosdb",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'backupstorage')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('cosmosDbTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "name": {
+            "value": "[variables('cosmosDbAccountName')]"
+          }
+        }
+      }
+    },
+
+    /* Storage Backup*/
+    {
+      "name": "backupstorage",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('storageTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "storageAccountName": {
+            "value": "[variables('backupStorageName')]"
+          },
+          "storageAccountKind": {
+            "value": "[parameters('backupStorageKind')]"
+          }
+        }
+      }
+    },
+
+    /* Key Vault */
+    {
+      "name": "key-vault",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'cosmosdb')]",
+        "[concat('Microsoft.Resources/deployments/', 'web-api-app-service')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('keyVaultTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "keyVaultName": {
+            "value": "[variables('keyVaultName')]"
+          },
+          "tenantId": {
+            "value": "[variables('_tenantId')]"
+          },
+          "accessPolicies": {
+            "value": [
+              {
+                "tenantId": "[variables('_tenantId')]",
+                "objectId": "[reference('web-api-app-service', '2016-09-01').outputs.msiPrincipalId.value]",
+                "permissions": {
+                  "secrets": [ "get" ]
+                }
+              }
+            ]
+          },
+          "secretsObject": {
+            "value": {
+              "secrets": [
+                {
+                  "secretName": "[variables('cosmosDbAccountKeySecretName')]",
+                  "secretValue": "[reference('cosmosdb').outputs.primaryAccountKey.value]"
+                },
+                {
+                  "secretName": "[variables('cosmosDbConnectionStringSecretName')]",
+                  "secretValue": "[concat('AccountEndpoint=', reference('cosmosdb').outputs.accountUri.value, ';AccountKey=', reference('cosmosdb').outputs.primaryAccountKey.value, ';')]"
+                },
+                {
+                  "secretName": "[variables('blobForBackupConnectionStringSecretName')]",
+                  "secretValue": "[reference('backupstorage').outputs.connectionString.value]"
+                },
+                {
+                  "secretName": "[variables('sourceCosmosDbToBeBackupedConnectionStringSecretName')]",
+                  "secretValue": "[concat('AccountEndpoint=', reference('cosmosdb').outputs.accountUri.value, ';AccountKey=', reference('cosmosdb').outputs.primaryAccountKey.value, ';Database=', parameters('cosmosDbName'))]"
+                },
+                {
+                  "secretName": "[variables('cosmosDbRestoreConnectionStringSecretName')]",
+                  "secretValue": "[concat('AccountEndpoint=', reference('cosmosdb').outputs.accountUri.value, ';AccountKey=', reference('cosmosdb').outputs.primaryAccountKey.value, ';Database=', parameters('cosmosDbName'))]"
+                }
+              ]
+            }
+          },
+          "diagnosticsEnabled": {
+            "value": false
+          }
+        }
+      }
+    },
+
+    /* App Service Plan */
+    {
+      "name": "app-service-plan",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('appServicePlanTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "appServicePlanName": {
+            "value": "[variables('appServicePlanName')]"
+          },
+          "appServicePlanSKUTier": {
+            "value": "[parameters('appServicePlanSKUTier')]"
+          },
+          "appServicePlanSKUName": {
+            "value": "[parameters('appServicePlanSKUName')]"
+          }
+        }
+      }
+    },
+
+    /* App Service Plan Autoscaling */
+    {
+      "name": "app-service-plan-autoscale",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'app-service-plan')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('appServicePlanAutoscaleSettingsTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "svcPlanName": {
+            "value": "[variables('appServicePlanName')]"
+          },
+          "metricResourceId": {
+            "value": "[reference('app-service-plan').outputs.resourceId.value]"
+          }
+        }
+      }
+    },
+
+    /* Web API App Service */
+    {
+      "name": "web-api-app-service",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'app-service-plan')]",
+        "[concat('Microsoft.Resources/deployments/', 'app-insights')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('appServiceTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "appServicePlanName": {
+            "value": "[variables('appServicePlanName')]"
+          },
+          "webAppName": {
+            "value": "[variables('apiAppServiceName')]"
+          },
+          "deployWebAppPackage": {
+            "value": false
+          },
+          "alwaysOn": {
+            "value": true
+          }
+        }
+      }
+    },
+
+    /* App Insights*/
+    {
+      "name": "app-insights",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('_artifactsLocation'), '/', parameters('_templateFolder'), '/', variables('appInsightsTemplateName'), parameters('_artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "appName": {
+            "value": "[variables('appInsightsName')]"
+          },
+          "location": {
+            "value": "[parameters('appInsightsLocation')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "webApiName": {
+      "type": "string",
+      "value": "[variables('apiAppServiceName')]"
+    },
+    "webApiUrl": {
+      "type": "string",
+      "value": "[reference('web-api-app-service').outputs.httpsUrl.value]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "value": "[variables('keyVaultName')]"
+    },
+    "appInsightsInstrumentationKey": {
+      "type": "string",
+      "value": "[reference('app-insights').outputs.instrumentationKey.value]"
+    },
+    "appInsightsName": {
+      "type": "string",
+      "value": "[variables('appInsightsName')]"
+    },
+    "cosmosDbAccountUri": {
+      "type": "string",
+      "value": "[reference('cosmosdb').outputs.accountUri.value]"
+    },
+    "cosmosDbAccountPrimaryKey": {
+      "type": "string",
+      "value": "[reference('cosmosdb').outputs.primaryAccountKey.value]"
+    },
+    "cosmosDbAccountName": {
+      "type": "string",
+      "value": "[reference('cosmosdb').outputs.accountName.value]"
+    }
+  }
+}

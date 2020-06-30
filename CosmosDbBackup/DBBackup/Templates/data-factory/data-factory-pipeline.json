@@ -1,0 +1,43 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string",
+      "metadata": "Data Factory Name"
+    },
+    "pipelineName": {
+      "type": "string",
+      "metadata": "Pipeline Name"
+    },
+    "folder": {
+      "type": "string",
+      "metadata": "Folder Name which contains pipeline"
+    },
+    "activities": {
+      "type": "array",
+      "metadata": "Activities for the pipeline",
+      "defaultValue": []
+    },
+    "inputParameters": {
+      "type": "object",
+      "metadata": "Input parameters fro the pipeline",
+      "defaultValue": {}
+    }
+  },
+  "resources": [
+    {
+      "name": "[concat(parameters('factoryName'), '/', parameters('pipelineName'))]",
+      "type": "Microsoft.DataFactory/factories/pipelines",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "folder": {
+          "name": "[parameters('folder')]"
+        },
+        "description": "[parameters('pipelineName')]",
+        "activities": "[parameters('activities')]",
+        "parameters": "[parameters('inputParameters')]"
+      }
+    }
+  ]
+}

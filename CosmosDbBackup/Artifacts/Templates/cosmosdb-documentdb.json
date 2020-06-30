@@ -1,0 +1,56 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "defaultValue": "benchmarkbuilder"
+    },
+    "experience": {
+      "type": "string",
+      "defaultValue": "DocumentDB"
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]"
+  },
+  "resources": [
+    {
+      "apiVersion": "2015-04-08",
+      "kind": "GlobalDocumentDB",
+      "type": "Microsoft.DocumentDb/databaseAccounts",
+      "name": "[parameters('name')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "locations": [
+          {
+            "locationName": "[variables('location')]",
+            "failoverPriority": 0
+          }
+        ],
+        "enableMultipleWriteLocations": false,
+        "isVirtualNetworkFilterEnabled": false,
+        "virtualNetworkRules": [],
+        "dependsOn": []
+      },
+      "tags": {
+        "defaultExperience": "[parameters('experience')]"
+      }
+    }
+  ],
+  "outputs": {
+    "accountUri": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.DocumentDb/databaseAccounts', parameters('name')), '2015-04-08').documentEndpoint]"
+    },
+    "primaryAccountKey": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.DocumentDb/databaseAccounts', parameters('name')), '2015-04-08').primaryMasterKey]"
+    },
+    "accountName": {
+      "type": "string",
+      "value": "[parameters('name')]"
+    }
+  }
+}

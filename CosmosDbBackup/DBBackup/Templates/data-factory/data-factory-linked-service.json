@@ -1,0 +1,37 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string",
+      "metadata": "Data Factory Name"
+    },
+    "serviceName": {
+      "type": "string",
+      "metadata": "Service Name"
+    },
+    "serviceType": {
+      "type": "string",
+      "metadata": "Service Type"
+    },
+    "typeProperties": {
+      "type": "object",
+      "metadata": "Type properties for the service"
+    }
+  },
+  "resources": [
+    {
+      "name": "[concat(parameters('factoryName'), '/', parameters('serviceName'))]",
+      "type": "Microsoft.DataFactory/factories/linkedServices",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "type": "[parameters('serviceType')]",
+        "typeProperties": "[parameters('typeProperties')]",
+        "additionalProperties": {},
+        "annotations": [
+          {}
+        ]
+      }
+    }
+  ]
+}

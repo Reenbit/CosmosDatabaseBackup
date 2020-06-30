@@ -1,0 +1,26 @@
+﻿{
+    "properties":  {
+                       "folder":  {
+                                      "name":  "Backup"
+                                  },
+                       "activities":  [
+                                          {
+                                              "typeProperties":  {
+                                                                     "pipeline":  {
+                                                                                      "referenceName":  "CopySingleCollection",
+                                                                                      "type":  "PipelineReference"
+                                                                                  },
+                                                                     "parameters":  {
+                                                                                        "collection":  "documents"
+                                                                                    }
+                                                                 },
+                                              "name":  "Copy documents",
+                                              "userProperties":  [
+
+                                                                 ],
+                                              "type":  "ExecutePipeline"
+                                          }
+                                      ]
+                   },
+    "name":  "Main"
+}

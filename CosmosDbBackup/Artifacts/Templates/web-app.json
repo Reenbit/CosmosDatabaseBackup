@@ -1,0 +1,151 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appServicePlanName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "webAppName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deployWebAppPackage": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "webAppPackageFolder": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "WebDeploy package location. This path is relative to the artifactsLocation parameter"
+      }
+    },
+    "webAppPackageFileName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the webdeploy package"
+      }
+    },
+    "alwaysOn": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "useStagingSlot": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "_artifactsLocation": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "_artifactsLocationSasToken": {
+      "type": "securestring",
+      "defaultValue": ""
+    }
+  },
+  "variables": {
+    "apiVersion": "2015-08-01",
+    "identityResourceId" : "[concat(resourceId('Microsoft.Web/sites', parameters('webAppName')),'/providers/Microsoft.ManagedIdentity/Identities/default')]"
+  },
+  "resources": [
+    {
+      "name": "[parameters('webAppName')]",
+      "type": "Microsoft.Web/sites",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-08-01",
+      "dependsOn": [],
+      "tags": {
+        "displayName": "webApp"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "name": "[parameters('webAppName')]",
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+        "siteConfig": {
+           "AlwaysOn": "[parameters('alwaysOn')]"
+        }
+      },
+      "resources": [
+        {
+          "condition": "[parameters('useStagingSlot')]",
+          "apiVersion": "2015-08-01",
+          "name": "staging",
+          "type": "slots",
+          "tags": {
+            "displayName": "Staging Slot"
+          },
+          "location": "[resourceGroup().location]",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/Sites', parameters('webAppName'))]"
+          ],
+          "properties": {
+          },
+          "resources": [
+            {
+              "condition": "[parameters('deployWebAppPackage')]",
+              "name": "MSDeploy",
+              "type": "extensions",
+              "location": "[resourceGroup().location]",
+              "apiVersion": "[variables('apiVersion')]",
+              "dependsOn": [
+                "[concat('Microsoft.Web/sites/', parameters('webAppName'), '/slots/staging')]"
+              ],
+              "tags": {
+                "displayName": "webDeploy1"
+              },
+              "properties": {
+                "packageUri": "[concat(parameters('_artifactsLocation'), '/', parameters('webAppPackageFolder'), '/', parameters('webAppPackageFileName'), parameters('_artifactsLocationSasToken'))]",
+                "dbType": "None",
+                "connectionString": "",
+                "AppOffline": true,
+                "setParameters": {
+                  "IIS Web Application Name": "[parameters('webAppName')]"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "condition": "[and(not(parameters('useStagingSlot')), parameters('deployWebAppPackage'))]",
+          "name": "MSDeploy",
+          "type": "extensions",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "[variables('apiVersion')]",
+          "dependsOn": [
+            "[concat('Microsoft.Web/sites/', parameters('webAppName'))]"
+          ],
+          "tags": {
+            "displayName": "webDeploy1"
+          },
+          "properties": {
+            "packageUri": "[concat(parameters('_artifactsLocation'), '/', parameters('webAppPackageFolder'), '/', parameters('webAppPackageFileName'), parameters('_artifactsLocationSasToken'))]",
+            "dbType": "None",
+            "connectionString": "",
+            "AppOffline": true,
+            "setParameters": {
+              "IIS Web Application Name": "[parameters('webAppName')]"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": {
+    "msiTenantId": {
+      "type": "string",
+      "value": "[reference(variables('identityResourceId'), '2015-08-31-PREVIEW').tenantId]"
+    },
+    "msiPrincipalId": {
+      "type": "string",
+      "value": "[reference(variables('identityResourceId'), '2015-08-31-PREVIEW').principalId]"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "value": "[concat('https://', parameters('webAppName'),'.azurewebsites.net')]"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string",
+      "metadata": "Data Factory Name"
+    },
+    "triggerName": {
+      "type": "string",
+      "metadata": "Trigger Name"
+    },
+    "pipelineName": {
+      "type": "string",
+      "metadata": "Pipeline Name to trigger"
+    },
+    "triggerType": {
+      "type": "string",
+      "metadata": "Trigger Type"
+    },
+    "typeProperties": {
+      "type": "object",
+      "metadata": "Type properties for the trigger"
+    }
+  },
+  "resources": [
+    {
+      "name": "[concat(parameters('factoryName'), '/', parameters('triggerName'))]",
+      "type": "Microsoft.DataFactory/factories/triggers",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "annotations": [],
+        "runtimeState": "Stopped",
+        "pipelines": [
+          {
+            "pipelineReference": {
+              "referenceName": "[parameters('pipelineName')]",
+              "type": "PipelineReference"
+            },
+            "parameters": {}
+          }
+        ],
+        "type": "[parameters('triggerType')]",
+        "typeProperties": "[parameters('typeProperties')]"
+      }
+    }
+  ]
+}

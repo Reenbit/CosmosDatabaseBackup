@@ -1,0 +1,633 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string",
+      "metadata": "Data Factory Name",
+      "defaultValue": "CosmosBackupADF"
+    },
+    "factoryLocation": {
+      "type": "string",
+      "defaultValue": "eastus"
+    },
+    "keyVaultName": {
+      "type": "string"
+    },
+    "artifactsLocation": {
+      "type": "string"
+    },
+    "dataFactoryTemplateFolder": {
+      "type": "string"
+    },
+    "artifactsLocationSasToken": {
+      "type": "string"
+    },
+    "BackupsStorageFileName": {
+      "type": "string",
+      "defaultValue": "@dataset().collection"
+    },
+    "BackupsStorageFolderPath": {
+      "type": "string",
+      "defaultValue": "@concat('cosmos-', dataset().day)"
+    },
+    "sourceCosmosDbToBeBackupConnectionStringSecretName": {
+      "type": "string"
+    },
+    "targetBlobForBackupConnectionStringSecretName": {
+      "type": "string"
+    },
+    "cosmosDbRestoreConnectionStringSecretName": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]",
+    "keyVaultUrl": "[concat('https://', parameters('keyVaultName'), '.vault.azure.net/')]",
+    "mainOrchestrationPipelineName": "Main",
+    "pipelineFolderName": "Backup",
+    "copySingleCollectionPipelineName": "CopySingleCollection",
+    "restoreSingleCollectionPipelineName": "RestoreSingleCollection",
+    "backupConnectionStringsVaultName": "BackupConnectionStringsVault",
+    "cosmosDbRestoreLinkedServiceName": "CosmosDb_Restore",
+    "targetBlobForBackupLinkedServiceName": "Target",
+    "sourceCosmosDbToBackupLinkedServiceName": "Source",
+    "triggerToRunBackupName": "DailyFullBackup",
+    "datasetToRestoreCosmosDbName": "CosmosRestore",
+    "datasetToBackupCosmosDbName": "BackupsStorage",
+    "datasetOfSourceCosmosDbName": "CosmosSource",
+    "dataFactoryTemplateFileName": "data-factory.json",
+    "dataFactoryPipelineTemplateFileName": "data-factory-pipeline.json",
+    "dataFactoryLinkedServiceTemplateFileName": "data-factory-linked-service.json",
+    "dataFactoryTriggerTemplateFileName": "data-factory-trigger.json",
+    "dataFactoryDatasetTemplateFileName": "data-factory-dataset.json"
+  },
+  "resources": [
+    /* Data Factory */
+    {
+      "name": "datafactory",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "factoryLocation": {
+            "value": "[parameters('factoryLocation')]"
+          }
+        }
+      }
+    },
+    /* Main Pipeline */
+    {
+      "name": "mainPipeline",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [ "datafactory" ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryPipelineTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "pipelineName": {
+            "value": "[variables('mainOrchestrationPipelineName')]"
+          },
+          "folder": {
+            "value": "[variables('pipelineFolderName')]"
+          }
+        }
+      }
+    },
+    /* Copy Single Collection Pipeline */
+    {
+      "name": "[variables('copySingleCollectionPipelineName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "datafactory",
+        "[variables('datasetToBackupCosmosDbName')]",
+        "[variables('datasetOfSourceCosmosDbName')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryPipelineTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "pipelineName": {
+            "value": "[variables('copySingleCollectionPipelineName')]"
+          },
+          "folder": {
+            "value": "[variables('pipelineFolderName')]"
+          },
+          "activities": {
+            "value": [
+              {
+                "name": "[variables('copySingleCollectionPipelineName')]",
+                "type": "Copy",
+                "policy": {
+                  "timeout": "7.00:00:00",
+                  "retry": 0,
+                  "retryIntervalInSeconds": 30,
+                  "secureOutput": false,
+                  "secureInput": false
+                },
+                "typeProperties": {
+                  "source": {
+                    "type": "DocumentDbCollectionSource",
+                    "nestingSeparator": "."
+                  },
+                  "sink": {
+                    "type": "BlobSink"
+                  },
+                  "enableStaging": false,
+                  "dataIntegrationUnits": 0
+                },
+                "inputs": [
+                  {
+                    "referenceName": "[variables('datasetOfSourceCosmosDbName')]",
+                    "type": "DatasetReference",
+                    "parameters": {
+                      "collection": {
+                        "value": "@pipeline().parameters.collection",
+                        "type": "Expression"
+                      }
+                    }
+                  }
+                ],
+                "outputs": [
+                  {
+                    "referenceName": "[variables('datasetToBackupCosmosDbName')]",
+                    "type": "DatasetReference",
+                    "parameters": {
+                      "collection": {
+                        "value": "@pipeline().parameters.collection",
+                        "type": "Expression"
+                      },
+                      "day": "@utcnow('yyyyMMdd')"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "inputParameters": {
+            "value": {
+              "collection": {
+                "type": "String"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Restore Single Collection Pipeline */
+    {
+      "name": "[variables('restoreSingleCollectionPipelineName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "datafactory",
+        "[variables('datasetToRestoreCosmosDbName')]",
+        "[variables('datasetToBackupCosmosDbName')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryPipelineTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "pipelineName": {
+            "value": "[variables('restoreSingleCollectionPipelineName')]"
+          },
+          "folder": {
+            "value": "[variables('pipelineFolderName')]"
+          },
+          "activities": {
+            "value": [
+              {
+                "name": "[variables('restoreSingleCollectionPipelineName')]",
+                "type": "Copy",
+                "dependsOn": [],
+                "policy": {
+                  "timeout": "7.00:00:00",
+                  "retry": 0,
+                  "retryIntervalInSeconds": 30,
+                  "secureOutput": false,
+                  "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                  "source": {
+                    "type": "BlobSource",
+                    "recursive": true
+                  },
+                  "sink": {
+                    "type": "DocumentDbCollectionSink",
+                    "nestingSeparator": ".",
+                    "writeBatchSize": 10000,
+                    "writeBehavior": "insert"
+                  },
+                  "enableStaging": false,
+                  "dataIntegrationUnits": 0
+                },
+                "inputs": [
+                  {
+                    "referenceName": "[variables('datasetToBackupCosmosDbName')]",
+                    "type": "DatasetReference",
+                    "parameters": {
+                      "collection": {
+                        "value": "@pipeline().parameters.collection",
+                        "type": "Expression"
+                      },
+                      "day": {
+                        "value": "@pipeline().parameters.day",
+                        "type": "Expression"
+                      }
+                    }
+                  }
+                ],
+                "outputs": [
+                  {
+                    "referenceName": "[variables('datasetToRestoreCosmosDbName')]",
+                    "type": "DatasetReference",
+                    "parameters": {
+                      "collection": {
+                        "value": "@pipeline().parameters.collection",
+                        "type": "Expression"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "inputParameters": {
+            "value": {
+              "day": {
+                "type": "String"
+              },
+              "collection": {
+                "type": "String"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Linked service for the backup connectionString */
+    {
+      "name": "[variables('backupConnectionStringsVaultName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [ "datafactory" ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryLinkedServiceTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "serviceName": {
+            "value": "[variables('backupConnectionStringsVaultName')]"
+          },
+          "serviceType": {
+            "value": "AzureKeyVault"
+          },
+          "typeProperties": {
+            "value": {
+              "baseUrl": "[variables('keyVaultUrl')]"
+            }
+          }
+        }
+      }
+    },
+    /* Linked service for Cosmos DB restore */
+    {
+      "name": "[variables('cosmosDbRestoreLinkedServiceName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [ "datafactory", "[variables('backupConnectionStringsVaultName')]" ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryLinkedServiceTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "serviceName": {
+            "value": "[variables('cosmosDbRestoreLinkedServiceName')]"
+          },
+          "serviceType": {
+            "value": "CosmosDb"
+          },
+          "typeProperties": {
+            "value": {
+              "connectionString": {
+                "type": "AzureKeyVaultSecret",
+                "store": {
+                  "referenceName": "[variables('backupConnectionStringsVaultName')]",
+                  "type": "LinkedServiceReference"
+                },
+                "secretName": "[parameters('cosmosDbRestoreConnectionStringSecretName')]"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Linked service for target Blob to backup */
+    {
+      "name": "[variables('targetBlobForBackupLinkedServiceName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [ "datafactory", "[variables('backupConnectionStringsVaultName')]" ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryLinkedServiceTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "serviceName": {
+            "value": "[variables('targetBlobForBackupLinkedServiceName')]"
+          },
+          "serviceType": {
+            "value": "AzureBlobStorage"
+          },
+          "typeProperties": {
+            "value": {
+              "connectionString": {
+                "type": "AzureKeyVaultSecret",
+                "store": {
+                  "referenceName": "[variables('backupConnectionStringsVaultName')]",
+                  "type": "LinkedServiceReference"
+                },
+                "secretName": "[parameters('targetBlobForBackupConnectionStringSecretName')]"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Linked service for source Cosmos DB to be backup */
+    {
+      "name": "[variables('sourceCosmosDbToBackupLinkedServiceName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [ "datafactory", "[variables('backupConnectionStringsVaultName')]" ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryLinkedServiceTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "serviceName": {
+            "value": "[variables('sourceCosmosDbToBackupLinkedServiceName')]"
+          },
+          "serviceType": {
+            "value": "CosmosDb"
+          },
+          "typeProperties": {
+            "value": {
+              "connectionString": {
+                "type": "AzureKeyVaultSecret",
+                "store": {
+                  "referenceName": "[variables('backupConnectionStringsVaultName')]",
+                  "type": "LinkedServiceReference"
+                },
+                "secretName": "[parameters('sourceCosmosDbToBeBackupConnectionStringSecretName')]"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Trigger to run Main pipeline on daily basis */
+    {
+      "name": "[variables('triggerToRunBackupName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [ "datafactory", "mainPipeline" ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryTriggerTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "triggerName": {
+            "value": "[variables('triggerToRunBackupName')]"
+          },
+          "pipelineName": {
+            "value": "[variables('mainOrchestrationPipelineName')]"
+          },
+          "triggerType": {
+            "value": "ScheduleTrigger"
+          },
+          "typeProperties": {
+            "value": {
+              "recurrence": {
+                "frequency": "Day",
+                "interval": 1,
+                "startTime": "2018-11-23T00:00:00Z",
+                "timeZone": "UTC",
+                "schedule": {
+                  "hours": [
+                    0
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Dataset for the restore Cosmos DB */
+    {
+      "name": "[variables('datasetToRestoreCosmosDbName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "datafactory",
+        "[variables('cosmosDbRestoreLinkedServiceName')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryDatasetTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "datasetName": {
+            "value": "[variables('datasetToRestoreCosmosDbName')]"
+          },
+          "linkedServiceName": {
+            "value": "[variables('cosmosDbRestoreLinkedServiceName')]"
+          },
+          "datasetType": {
+            "value": "DocumentDbCollection"
+          },
+          "typeProperties": {
+            "value": {
+              "collectionName": {
+                "value": "@dataset().collection",
+                "type": "Expression"
+              }
+            }
+          },
+          "inputParameters": {
+            "value": {
+              "collection": {
+                "type": "String"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Dataset for the backup Cosmos DB */
+    {
+      "name": "[variables('datasetToBackupCosmosDbName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "datafactory",
+        "[variables('targetBlobForBackupLinkedServiceName')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryDatasetTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "datasetName": {
+            "value": "[variables('datasetToBackupCosmosDbName')]"
+          },
+          "linkedServiceName": {
+            "value": "[variables('targetBlobForBackupLinkedServiceName')]"
+          },
+          "datasetType": {
+            "value": "AzureBlob"
+          },
+          "typeProperties": {
+            "value": {
+              "format": {
+                "type": "JsonFormat",
+                "filePattern": "setOfObjects"
+              },
+              "fileName": {
+                "value": "[parameters('BackupsStorageFileName')]",
+                "type": "Expression"
+              },
+              "folderPath": {
+                "value": "[parameters('BackupsStorageFolderPath')]",
+                "type": "Expression"
+              }
+            }
+          },
+          "inputParameters": {
+            "value": {
+              "collection": {
+                "type": "String"
+              },
+              "day": {
+                "type": "String",
+                "defaultValue": "@utcnow('yyyyMMdd')"
+              }
+            }
+          }
+        }
+      }
+    },
+    /* Dataset for the source Cosmos DB */
+    {
+      "name": "[variables('datasetOfSourceCosmosDbName')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-09-01",
+      "dependsOn": [
+        "datafactory",
+        "[variables('sourceCosmosDbToBackupLinkedServiceName')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[concat(parameters('artifactsLocation'), '/', parameters('dataFactoryTemplateFolder'), '/', variables('dataFactoryDatasetTemplateFileName'), parameters('artifactsLocationSasToken'))]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "factoryName": {
+            "value": "[parameters('factoryName')]"
+          },
+          "datasetName": {
+            "value": "[variables('datasetOfSourceCosmosDbName')]"
+          },
+          "linkedServiceName": {
+            "value": "[variables('sourceCosmosDbToBackupLinkedServiceName')]"
+          },
+          "datasetType": {
+            "value": "DocumentDbCollection"
+          },
+          "typeProperties": {
+            "value": {
+              "collectionName": {
+                "value": "@dataset().collection",
+                "type": "Expression"
+              }
+            }
+          },
+          "inputParameters": {
+            "value": {
+              "collection": {
+                "type": "String"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

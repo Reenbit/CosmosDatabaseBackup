@@ -1,0 +1,46 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string",
+      "metadata": "Data Factory Name"
+    },
+    "datasetName": {
+      "type": "string",
+      "metadata": "Dataset Name"
+    },
+    "linkedServiceName": {
+      "type": "string",
+      "metadata": "Linked Service Name"
+    },
+    "datasetType": {
+      "type": "string",
+      "metadata": "Dataset Type"
+    },
+    "typeProperties": {
+      "type": "object",
+      "metadata": "Type properties for the dataset"
+    },
+    "inputParameters": {
+      "type": "object",
+      "metadata": "Input parameters for the dataset"
+    }
+  },
+  "resources": [
+    {
+      "name": "[concat(parameters('factoryName'), '/', parameters('datasetName'))]",
+      "type": "Microsoft.DataFactory/factories/datasets",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "linkedServiceName": {
+          "type": "LinkedServiceReference",
+          "referenceName": "[parameters('linkedServiceName')]"
+        },
+        "type": "[parameters('datasetType')]",
+        "parameters": "[parameters('inputParameters')]",
+        "typeProperties": "[parameters('typeProperties')]"
+      }
+    }
+  ]
+}
