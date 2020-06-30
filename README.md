@@ -4,7 +4,7 @@ Also, it contains ARM templates for creating simple web application with with se
 Note: web application divided into two applications one for UI and another one for API and they both deployed to the same service plan.
 
 ## Project Architecture
-![Project Architecture](/Images/projarch.PNG)
+![Project Architecture](/Images/projarch.png)
 
 
 ## Technology stack
@@ -26,7 +26,7 @@ ASP.NET Core, Azure Cosmos DB, Azure Data Factory, Azure Key Vault, Azure Applic
         11 AppServicePlanSKUName - name of SKU of pricing tier for Azure App service plan
 
 - ### Backup solution architecture 
-  ![Backup solution](/Images/solutionarch.PNG)
+  ![Backup solution](/Images/solutionarch.png)
  
 ## Notes
 After successful deploy of CosmosDbBackup/Deploy-App.ps1 script Azure resource group will be deployed with all resources.
